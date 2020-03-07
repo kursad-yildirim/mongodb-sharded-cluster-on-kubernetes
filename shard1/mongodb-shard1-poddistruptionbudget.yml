@@ -1,0 +1,16 @@
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  labels:
+    app: mongodb
+    component: shard-server
+    replica-name: shard1
+  name: mongodb-shard1-pdb
+  namespace: mongodb
+spec:
+  selector:
+    matchLabels:
+      app: mongodb
+      component: shard-server
+      replica-name: shard1
+  minAvailable: 2

@@ -1,0 +1,16 @@
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  labels:
+    app: mongodb
+    component: config-server
+    replica-name: config0
+  name: mongodb-config0-pdb
+  namespace: mongodb
+spec:
+  selector:
+    matchLabels:
+      app: mongodb
+      component: config-server
+      replica-name: config0
+  minAvailable: 2

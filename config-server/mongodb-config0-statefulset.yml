@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: mongodb
+    component: config-server
+    replica-name: config0
+  name: mongodb-config0
+  namespace: mongodb
+spec:
+  selector:
+    matchLabels:
+      app: mongodb
+      component: config-server
+      replica-name: config0
+  serviceName: mongodb-config0-service
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: mongodb
+        component: config-server
+        replica-name: config0
+    spec:
+      terminationGracePeriodSeconds: 30
+      initContainers:
+        - name: copy-config
+          image: "busybox:1.29.3"
+          imagePullPolicy: "IfNotPresent"
+          command:
+            - "sh"
+          args:
+            - "-c"
+            - |
+              set -e
+              set -x
+              cp /configdb-readonly/mongod.conf /data/configdb/mongod.conf
+          volumeMounts:
+            - name: workdir
+              mountPath: /work-dir
+            - name: config
+              mountPath: /configdb-readonly
+            - name: configdir
+              mountPath: /data/configdb
+        - name: install
+          image: "unguiculus/mongodb-install:0.7"
+          args:
+            - --work-dir=/work-dir
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: workdir
+              mountPath: /work-dir
+        - name: bootstrap
+          image: "mongo:4.2.3"
+          command:
+            - "sh"
+          args:
+            - "-c"
+            - |
+              /work-dir/peer-finder -h
+              /work-dir/peer-finder -on-start=/init/on-start.sh -service=mongodb-config0-service
+          imagePullPolicy: "IfNotPresent"
+          env:
+            - name: POD_NAMESPACE
+              value: mongodb
+            - name: REPLICA_SET
+              value: config0
+            - name: TIMEOUT
+              value: "900"
+          volumeMounts:
+            - name: workdir
+              mountPath: /work-dir
+            - name: init
+              mountPath: /init
+            - name: configdir
+              mountPath: /data/configdb
+            - name: datadir
+              mountPath: /data/db
+      containers:
+        - name: mongodb-config0
+          image: "mongo:4.2.3"
+          imagePullPolicy: "IfNotPresent"
+          ports:
+            - name: mongodb
+              containerPort: 27017
+          command:
+            - mongod
+          args:
+            - --config=/data/configdb/mongod.conf
+            - --dbpath=/data/db
+            - --replSet=config0
+            - --port=27017
+            - --bind_ip=0.0.0.0
+          volumeMounts:
+            - name: datadir
+              mountPath: /data/db
+            - name: configdir
+              mountPath: /data/configdb
+            - name: workdir
+              mountPath: /work-dir
+      volumes:
+        - name: config
+          configMap:
+            name: mongodb-config0-configmap
+        - name: init
+          configMap:
+            defaultMode: 0755
+            name: mongodb-config0-init-configmap
+        - name: workdir
+          emptyDir: {}
+        - name: configdir
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: datadir
+        annotations:
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: "10Gi"
+        storageClassName: "ocs-storagecluster-ceph-rbd"
